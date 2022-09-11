@@ -36,8 +36,8 @@ if __name__ == '__main__':
     xstate = [0, 0, 0, 0, 0, 0, 0, 0, 0]
     ostate = [0, 0, 0, 0, 0, 0, 0, 0, 0]
     turn = 1
-    print("xchance")
-    print("www")
+    print("Welcom!!!!!!!!!")
+    print("Lets play")
     while (True):
         printboard(xstate, ostate)
         if (turn == 1):
