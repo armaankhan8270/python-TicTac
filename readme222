@@ -1,85 +1,22 @@
-from flask import Flask, request, jsonify, send_from_directory
-import yaml
-import os
-from pydantic import ValidationError
-
-app = Flask(__name__)
-
-# Load existing connections from the YAML file
-def load_connections():
-    yaml_file = 'connections.yaml'
-    if os.path.exists(yaml_file):
-        with open(yaml_file, 'r') as file:
-            return yaml.safe_load(file) or {}
-    return {}
-
-@app.route('/connections', methods=['GET'])
-def get_connections():
-    connections = load_connections()
-    return jsonify(connections)
-
-@app.route('/connection/<connection_name>', methods=['GET'])
-def get_connection(connection_name):
-    connections = load_connections()
-    connection = connections.get(connection_name)
-    if not connection:
-        return jsonify({"error": "Connection not found"}), 404
-    return jsonify(connection)
-
-@app.route('/update_connection/<connection_name>', methods=['PUT'])
-def update_connection(connection_name):
-    yaml_file = 'connections.yaml'
-    data = request.json
-
-    if not connection_name:
-        return jsonify({"error": "Connection name is required"}), 400
-
-    try:
-        if os.path.exists(yaml_file):
-            with open(yaml_file, 'r') as file:
-                existing_connections = yaml.safe_load(file) or {}
-        else:
-            existing_connections = {}
-
-        if connection_name not in existing_connections:
-            return jsonify({"error": "Connection does not exist"}), 404
-
-        existing_connections[connection_name] = data
-
-        with open(yaml_file, 'w') as file:
-            yaml.dump(existing_connections, file)
-
-        return jsonify({"message": "Connection updated successfully"}), 200
-
-    except ValidationError as e:
-        return jsonify({"error": str(e)}), 400
-
-@app.route('/delete_connection/<connection_name>', methods=['DELETE'])
+@app.route('/connection/<connection_name>', methods=['DELETE'])
 def delete_connection(connection_name):
     yaml_file = 'connections.yaml'
+    connections = load_connections(yaml_file)
 
-    if not connection_name:
-        return jsonify({"error": "Connection name is required"}), 400
+    # Find and remove the connection
+    found = False
+    for conn_type, conn_list in connections.items():
+        for conn in conn_list:
+            if conn['name_of_connection'] == connection_name:
+                conn_list.remove(conn)
+                found = True
+                break
+        if found:
+            break
 
-    if os.path.exists(yaml_file):
-        with open(yaml_file, 'r') as file:
-            existing_connections = yaml.safe_load(file) or {}
-    else:
-        existing_connections = {}
+    if not found:
+        return jsonify({"error": "Connection not found"}), 404
 
-    if connection_name not in existing_connections:
-        return jsonify({"error": "Connection does not exist"}), 404
-
-    del existing_connections[connection_name]
-
-    with open(yaml_file, 'w') as file:
-        yaml.dump(existing_connections, file)
-
+    # Save updated connections
+    save_connections(connections, yaml_file)
     return jsonify({"message": "Connection deleted successfully"}), 200
-
-@app.route('/static/<path:filename>')
-def static_files(filename):
-    return send_from_directory('static', filename)
-
-if __name__ == "__main__":
-    app.run(debug=True)
