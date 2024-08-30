@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connections</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+
+<div class="container mx-auto mt-10">
+    <h2 class="text-3xl font-bold text-center text-gray-800 mb-8">Manage Connections</h2>
+
+    <!-- Table to display all connections -->
+    <div class="bg-white shadow-md rounded my-6">
+        <table class="min-w-full bg-white">
+            <thead>
+                <tr>
+                    <th class="py-2 px-6 bg-gray-200 text-left text-sm font-semibold text-gray-600">Connection Name</th>
+                    <th class="py-2 px-6 bg-gray-200 text-left text-sm font-semibold text-gray-600">Connection Type</th>
+                    <th class="py-2 px-6 bg-gray-200 text-left text-sm font-semibold text-gray-600">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for type, connections in connections.items() %}
+                    {% for connection in connections %}
+                        <tr class="border-b">
+                            <td class="py-2 px-6 text-left whitespace-nowrap">{{ connection.name_of_connection }}</td>
+                            <td class="py-2 px-6 text-left">{{ connection.connection_type }}</td>
+                            <td class="py-2 px-6 text-left">
+                                <button onclick="editConnection('{{ connection.name_of_connection }}')" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Edit</button>
+                                <button onclick="deleteConnection('{{ connection.name_of_connection }}')" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Delete</button>
+                                <button onclick="testConnection('{{ connection.name_of_connection }}')" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Test</button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="editModal" class="hidden fixed z-10 inset-0 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen">
+        <div class="bg-white rounded-lg p-8 shadow-lg w-full max-w-md">
+            <h2 class="text-2xl font-bold mb-4">Edit Connection</h2>
+            <form id="edit-form">
+                <input type="hidden" id="edit-name" name="name_of_connection">
+                <div class="mb-4">
+                    <label for="edit-type" class="block text-gray-700 font-semibold mb-2">Connection Type</label>
+                    <input type="text" id="edit-type" name="connection_type" class="w-full px-4 py-2 border rounded-lg focus:outline-none">
+                </div>
+                <div id="edit-fields-container"></div>
+                <div class="mt-6 flex justify-between">
+                    <button type="button" onclick="closeModal()" class="bg-gray-500 text-white py-2 px-4 rounded hover:bg-gray-600">Cancel</button>
+                    <button type="submit" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const connectionFields = {{ connection_fields | tojson }};
+    
+    function editConnection(name) {
+        // Fetch connection details to populate the form
+        fetch(`/connection/${name}`)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('edit-name').value = data.name_of_connection;
+                document.getElementById('edit-type').value = data.connection_type;
+                populateEditFields(data);
+                document.getElementById('editModal').classList.remove('hidden');
+            });
+    }
+
+    function populateEditFields(connection) {
+        const fieldsContainer = document.getElementById('edit-fields-container');
+        fieldsContainer.innerHTML = '';
+
+        const connectionType = connection.connection_type;
+        if (connectionType && connectionFields[connectionType]) {
+            Object.keys(connectionFields[connectionType]).forEach(field => {
+                const formGroup = document.createElement('div');
+                formGroup.className = 'mb-4';
+
+                const label = document.createElement('label');
+                label.setAttribute('for', `edit-${field}`);
+                label.className = 'block text-gray-700 font-semibold mb-2';
+                label.textContent = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+                const input = document.createElement('input');
+                input.type = connectionFields[connectionType][field];
+                input.id = `edit-${field}`;
+                input.name = field;
+                input.value = connection[field] || '';
+                input.className = 'w-full px-4 py-2 border rounded-lg focus:outline-none';
+
+                formGroup.appendChild(label);
+                formGroup.appendChild(input);
+                fieldsContainer.appendChild(formGroup);
+            });
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('editModal').classList.add('hidden');
+    }
+
+    document.getElementById('edit-form').onsubmit = function(event) {
+        event.preventDefault();
+        const formData = new FormData(event.target);
+        const connectionName = formData.get('name_of_connection');
+
+        fetch(`/connection/${connectionName}`, {
+            method: 'PUT',
+            body: JSON.stringify(Object.fromEntries(formData)),
+            headers: { 'Content-Type': 'application/json' }
+        }).then(response => {
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Failed to update connection');
+            }
+        });
+    };
+
+    function deleteConnection(name) {
+        if (confirm('Are you sure you want to delete this connection?')) {
+            fetch(`/connection/${name}`, { method: 'DELETE' })
+                .then(response => {
+                    if (response.ok) {
+                        window.location.reload();
+                    } else {
+                        alert('Failed to delete connection');
+                    }
+                });
+        }
+    }
+
+    function testConnection(name) {
+        alert(`Testing connection: ${name}`);
+    }
+</script>
+
+</body>
+</html>
