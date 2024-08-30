@@ -1,0 +1,170 @@
+import os
+import yaml
+from flask import Flask, request, jsonify, render_template
+
+app = Flask(__name__)
+
+def load_connections():
+    """Load connections from the YAML file."""
+    yaml_file = 'connections.yaml'
+    if not os.path.exists(yaml_file):
+        return {}  # Return an empty dictionary if the file does not exist
+    with open(yaml_file, 'r') as file:
+        return yaml.safe_load(file) or {}  # Load and return the data from the YAML file, or return an empty dictionary if the file is empty
+
+def save_connections(connections):
+    """Save connections to the YAML file."""
+    with open('connections.yaml', 'w') as file:
+        yaml.dump(connections, file, default_flow_style=False)
+
+@app.route("/getconnections1", methods=["GET"])
+def getconnections():
+    """Retrieve all connections and return as JSON."""
+    returned_data = load_connections()
+    return jsonify(returned_data), 200
+
+@app.route('/update_connection/<connection_name>', methods=['PUT'])
+def update_connection(connection_name):
+    """Update an existing connection."""
+    yaml_file = 'connections.yaml'
+    data = request.json
+
+    if not connection_name:
+        return jsonify({"error": "Connection name is required"}), 400
+
+    if not os.path.exists(yaml_file):
+        return jsonify({"error": "YAML file not found"}), 404
+
+    with open(yaml_file, 'r') as file:
+        existing_connections = yaml.safe_load(file) or {}
+
+    updated = False
+    for connection_type, connection_list in existing_connections.items():
+        for connection in connection_list:
+            if connection['name_of_connection'] == connection_name:
+                connection.update(data)
+                updated = True
+                break
+        if updated:
+            break
+
+    if not updated:
+        return jsonify({"error": "Connection not found"}), 404
+
+    with open(yaml_file, 'w') as file:
+        yaml.dump(existing_connections, file)
+
+    return jsonify({"message": "Connection updated successfully"}), 200
+
+@app.route('/connection/<connection_name>', methods=['GET'])
+def get_connection(connection_name):
+    """Retrieve a specific connection based on the connection name."""
+    connections = load_connections()
+
+    for connection_type, connection_list in connections.items():
+        for connection in connection_list:
+            if connection['name_of_connection'] == connection_name:
+                return jsonify(connection)
+
+    return jsonify({"error": "Connection not found"}), 404
+
+@app.route("/connections", methods=["GET", "POST"])
+def connections():
+    """Handle both GET and POST requests for connections."""
+    yaml_file = 'connections.yaml'
+    all_connections = load_connections()
+
+    if request.method == "POST":
+        data = request.json
+
+        # Extract the connection name and type
+        name_of_connection = data.get('name_of_connection')
+        connection_type = data.get('connection_type')
+
+        if not name_of_connection or not connection_type:
+            return jsonify({"error": "Connection name and type are required"}), 400
+
+        model = CONNECTION_MODELS.get(connection_type)
+        if not model:
+            return jsonify({"error": "Invalid connection type"}), 400
+
+        try:
+            # Validate the data using Pydantic models
+            validated_data = model(**data)
+
+            # Prepare the connection data to be stored
+            connection_data = validated_data.dict()
+            connection_data['name_of_connection'] = name_of_connection
+            connection_data['connection_type'] = connection_type
+
+            # Load existing YAML data if the file exists
+            if os.path.exists(yaml_file):
+                with open(yaml_file, 'r') as f:
+                    existing_data = yaml.safe_load(f) or {}
+            else:
+                existing_data = {}
+
+            # Ensure no duplicate connection names
+            if connection_type in existing_data:
+                for existing_conn in existing_data[connection_type]:
+                    if existing_conn.get('name_of_connection') == name_of_connection:
+                        return jsonify({"error": "Connection with this name already exists"}), 400
+
+            # Append the new connection data under the correct connection type
+            if connection_type not in existing_data:
+                existing_data[connection_type] = []
+            existing_data[connection_type].append(connection_data)
+
+            # Write the updated data back to the YAML file
+            with open(yaml_file, 'w') as f:
+                yaml.safe_dump(existing_data, f)
+
+            return jsonify({"message": "Connection saved successfully"}), 200
+        except Exception as e:
+            return jsonify({"error": f"An error occurred: {str(e)}"}), 400
+    else:
+        connection_fields = {}
+        for conn_name, model in CONNECTION_MODELS.items():
+            required_fields = {field: 'text' for field in model.__annotations__.keys()}
+            connection_fields[conn_name] = required_fields
+
+        # Retrieve all connections to be displayed
+        connections = target.common.display_connection()
+        yaml_data = load_connections()
+
+        os_platform = sys.platform
+        os_check = not os_platform.startswith('win')
+        connection_types = list(CONNECTION_MODELS.keys())
+
+        return render_template("connections.html", connection=connections, os_check=os_check,
+                               connection_fields=connection_fields, connection_types=connection_types,
+                               all_connections=all_connections)
+
+@app.route('/connection/<connection_name>', methods=['DELETE'])
+def delete_connection(connection_name):
+    """Delete a specific connection based on the connection name."""
+    yaml_file = 'connections.yaml'
+    connections = load_connections()
+
+    found = False
+    for conn_type, conn_list in connections.items():
+        for conn in conn_list:
+            if conn['name_of_connection'] == connection_name:
+                conn_list.remove(conn)
+                found = True
+                break
+        if found:
+            break
+
+    if not found:
+        return jsonify({"error": "Connection not found"}), 404
+
+    # Save updated connections
+    save_connections(connections)
+    return jsonify({"message": "Connection deleted successfully"}), 200
+
+@app.route("/submit_connection", methods=["POST"])
+def submit_connection():
+    """Handle form submission for connection details."""
+    data = request.json
+    return jsonify({"message": "Connection details received", "data": data})
