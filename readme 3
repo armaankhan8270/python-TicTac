@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connections</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.2.7/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script defer src="/static/connections.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-6">
+        <h1 class="text-3xl font-bold mb-6">Connections</h1>
+        <table class="min-w-full bg-white border border-gray-300 rounded-lg shadow-md">
+            <thead class="bg-gray-200">
+                <tr>
+                    <th class="py-3 px-6 text-left text-gray-700">Connection Name</th>
+                    <th class="py-3 px-6 text-left text-gray-700">Type</th>
+                    <th class="py-3 px-6 text-left text-gray-700">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="connections-table">
+                <!-- Rows will be inserted here by JavaScript -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Edit Connection Modal -->
+    <div id="edit-modal" class="fixed inset-0 bg-gray-800 bg-opacity-50 flex justify-center items-center hidden">
+        <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+            <h2 class="text-3xl font-bold text-center text-gray-800 mb-8">Edit Connection</h2>
+            <form id="edit-form" onsubmit="updateConnection(event)">
+                <input type="hidden" id="edit-connection-name" name="connection_name">
+                <div class="mb-6">
+                    <label for="edit-connection-type" class="block text-gray-700 font-semibold mb-2">Connection Type</label>
+                    <select id="edit-connection-type" name="connection_type" onchange="showEditFields()" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-150 ease-in-out">
+                        <!-- Options will be inserted here by JavaScript -->
+                    </select>
+                </div>
+                <div id="edit-fields-container" class="mb-6"></div>
+                <div class="mt-6">
+                    <button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-150 ease-in-out">Save</button>
+                    <button type="button" id="close-edit-modal" class="w-full bg-gray-500 text-white py-3 rounded-lg mt-2 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 transition duration-150 ease-in-out">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const connectionFields = {{ connection_fields | tojson }};
+        const connectionTypes = {{ connection_types | tojson }};
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchConnections();
+        });
+
+        function fetchConnections() {
+            axios.get('/connections')
+                .then(response => {
+                    const connections = response.data;
+                    const connectionsTable = document.getElementById('connections-table');
+                    connectionsTable.innerHTML = '';
+
+                    Object.keys(connections).forEach(connName => {
+                        const connection = connections[connName];
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td class="py-3 px-6 border-b border-gray-300">${connection.name_of_connection}</td>
+                            <td class="py-3 px-6 border-b border-gray-300">${connName}</td>
+                            <td class="py-3 px-6 border-b border-gray-300">
+                                <button class="bg-yellow-500 text-white py-1 px-2 rounded-lg mr-2" onclick="openEditModal('${connName}')">Edit</button>
+                                <button class="bg-red-500 text-white py-1 px-2 rounded-lg mr-2" onclick="deleteConnection('${connName}')">Delete</button>
+                                <button class="bg-green-500 text-white py-1 px-2 rounded-lg" onclick="testConnection('${connName}')">Test</button>
+                            </td>
+                        `;
+                        connectionsTable.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching connections:', error);
+                });
+        }
+
+        function openEditModal(connectionName) {
+            axios.get(`/connection/${connectionName}`)
+                .then(response => {
+                    const connection = response.data;
+                    if (!connection) return;
+
+                    const editModal = document.getElementById('edit-modal');
+                    const editConnectionTypeSelect = document.getElementById('edit-connection-type');
+                    const editFieldsContainer = document.getElementById('edit-fields-container');
+                    const editConnectionNameInput = document.getElementById('edit-connection-name');
+
+                    editConnectionNameInput.value = connectionName;
+                    editConnectionTypeSelect.innerHTML = connectionTypes.map(type => `<option value="${type}" ${type === connection.connection_type ? 'selected' : ''}>${type}</option>`).join('');
+                    showEditFields(); // Show fields based on type
+
+                    editModal.classList.remove('hidden');
+                })
+                .catch(error => {
+                    console.error('Error loading connection details:', error);
+                });
+        }
+
+        function showEditFields() {
+            const connectionType = document.getElementById('edit-connection-type').value;
+            const fieldsContainer = document.getElementById('edit-fields-container');
+            fieldsContainer.innerHTML = '';
+
+            if (connectionType && connectionFields[connectionType]) {
+                Object.keys(connectionFields[connectionType]).forEach(field => {
+                    const formGroup = document.createElement('div');
+                    formGroup.className = 'mb-4';
+
+                    const label = document.createElement('label');
+                    label.setAttribute('for', field);
+                    label.className = 'block text-gray-700 font-semibold mb-2';
+                    label.textContent = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+                    const input = document.createElement('input');
+                    input.type = connectionFields[connectionType][field];
+                    input.id = field;
+                    input.name = field;
+                    input.placeholder = `Enter ${field.replace(/_/g, ' ')}`;
+                    input.className = 'w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500';
+
+                    formGroup.appendChild(label);
+                    formGroup.appendChild(input);
+                    fieldsContainer.appendChild(formGroup);
+                });
+            }
+        }
+
+        function updateConnection(event) {
+            event.preventDefault();
+            const formData = new FormData(document.getElementById('edit-form'));
+            const connectionData = Object.fromEntries(formData.entries());
+            const connectionName = connectionData.connection_name;
+
+            axios.put(`/update_connection/${connectionName}`, connectionData)
+                .then(response => {
+                    console.log(response.data.message);
+                    fetchConnections();
+                    closeEditModal();
+                })
+                .catch(error => {
+                    console.error('Error updating connection:', error);
+                });
+        }
+
+        function deleteConnection(connectionName) {
+            if (confirm('Are you sure you want to delete this connection?')) {
+                axios.delete(`/delete_connection/${connectionName}`)
+                    .then(response => {
+                        console.log(response.data.message);
+                        fetchConnections();
+                    })
+                    .catch(error => {
+                        console.error('Error deleting connection:', error);
+                    });
+            }
+        }
+
+        function testConnection(connectionName) {
+            axios.get(`/test_connection/${connectionName}`)
+                .then(response => {
+                    alert(`Test result for ${connectionName}: ${response.data.message}`);
+                })
+                .catch(error => {
+                    console.error('Error testing connection:', error);
+                });
+        }
+
+        document.getElementById('close-edit-modal').addEventListener('click', closeEditModal);
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
